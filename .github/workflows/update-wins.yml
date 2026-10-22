@@ -1,0 +1,15 @@
+name: Update NBA wins
+on:
+  schedule:
+    - cron: '0 8 * * *'   # every day at 8:00 UTC (midnight Pacific Standard, 1 AM Pacific Daylight)
+  workflow_dispatch:       # lets you run it by hand from the Actions tab
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node update-wins.mjs
+ 
