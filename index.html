@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NBA Team Pickem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f6;--card:#fff;--text:#0f1b2d;--muted:#5d6b82;--line:#d6dce8;--led:#c2410c;--ok:#15803d;--chip:#e4e9f2;--head:'Barlow Condensed','Arial Narrow',Impact,sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#131d31;--text:#e8edf7;--muted:#8d9bb5;--line:#233250;--led:#ffb020;--ok:#4ade80;--chip:#1b2842}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+main{max-width:760px;margin:0 auto;padding:18px 14px 60px}
+h1{font:800 2.1rem/1 var(--head);margin:0;letter-spacing:.01em}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}
+nav{display:flex;gap:6px;margin-bottom:16px}
+button,select,input,textarea{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+button{cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--led);outline-offset:2px}
+button:disabled{opacity:.45;cursor:not-allowed}
+nav button{flex:1;font-weight:700}
+nav button.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+.go{background:var(--led);border-color:var(--led);color:#fff;font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.row{display:flex;align-items:center;gap:14px}
+.rank{font:800 1.8rem/1 var(--head);width:34px;text-align:center;color:var(--muted)}
+.first .rank,.first .pts{color:var(--led)}
+.first{border-color:var(--led)}
+.mid{flex:1;min-width:0}
+.nm{font:700 1.3rem/1.1 var(--head)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.chip{font-size:.8rem;background:var(--chip);border-radius:6px;padding:2px 8px;color:var(--muted)}
+.chip b{color:var(--text)}
+.pts{font:800 2.6rem/1 var(--head);text-align:right}
+.pts small{display:block;font:600 .7rem system-ui;color:var(--muted)}
+.clock{border-left:5px solid var(--led)}
+.clock .nm{font-size:1.7rem}
+.muted{color:var(--muted);font-size:.9rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px;margin-top:10px}
+.grid button{text-align:left;padding:10px}
+.wr{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
+.wr:last-child{border:0}
+.ctl{display:flex;gap:8px;align-items:center}
+.ctl span{min-width:28px;text-align:center;font-weight:700}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0));transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;max-width:90%;z-index:9}
+textarea{width:100%;min-height:200px}
+.stack{display:grid;gap:10px}
+@media (prefers-reduced-motion:no-preference){.clock{transition:border-color .2s}}
+</style>
+</head>
+<body>
+<main>
+  <header><h1>🏀 NBA Team Pickem</h1></header>
+  <div id="app"><p class="muted">Loading…</p></div>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getFirestore,doc,onSnapshot,setDoc,updateDoc,runTransaction} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCOGecDyAf7EDRAnp60_E9OwV0ihgNgbQo",
+  authDomain: "nba-team-pickem.firebaseapp.com",
+  projectId: "nba-team-pickem",
+  storageBucket: "nba-team-pickem.firebasestorage.app",
+  messagingSenderId: "178664968562",
+  appId: "1:178664968562:web:0cd267ca90efeacf0f8deb"
+};
+const db=getFirestore(initializeApp(firebaseConfig));
+const ref=doc(db,"league","main");
+const TEAMS=["Atlanta Hawks","Boston Celtics","Brooklyn Nets","Charlotte Hornets","Chicago Bulls","Cleveland Cavaliers","Dallas Mavericks","Denver Nuggets","Detroit Pistons","Golden State Warriors","Houston Rockets","Indiana Pacers","LA Clippers","Los Angeles Lakers","Memphis Grizzlies","Miami Heat","Milwaukee Bucks","Minnesota Timberwolves","New Orleans Pelicans","New York Knicks","Oklahoma City Thunder","Orlando Magic","Philadelphia 76ers","Phoenix Suns","Portland Trail Blazers","Sacramento Kings","San Antonio Spurs","Toronto Raptors","Utah Jazz","Washington Wizards"];
+const ROUNDS=3;
+let L=null,loaded=false,tab='score',editWins=false;
+let me=localStorage.getItem('me')||'';
+const $=s=>document.querySelector(s),app=$('#app');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const sha=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const now=()=>new Date().toLocaleString([], {dateStyle:'medium',timeStyle:'short'});
+const unlocked=()=>!!L;
+const win=t=>(L.wins&&L.wins[t])||0;
+const owner=i=>{const n=L.players.length,r=Math.floor(i/n),k=i%n;return L.players[r%2?n-1-k:k]};
+const mine=p=>L.picks.map((t,i)=>owner(i)===p?t:null).filter(Boolean);
+const total=p=>mine(p).reduce((a,t)=>a+win(t),0);
+const totalPicks=()=>ROUNDS*L.players.length;
+function toast(m){const d=document.createElement('div');d.className='toast';d.textContent=m;document.body.append(d);setTimeout(()=>d.remove(),3500)}
+
+onSnapshot(ref,s=>{loaded=true;L=s.exists()?s.data():null;render()},e=>{app.innerHTML='<div class="card">Couldn’t load the league: '+esc(e.message)+'<br><span class="muted">Check that the Firestore database exists and the rules are published.</span></div>'});
+
+function render(){
+  if(!loaded) return;
+  if(!L) return setup();
+  let h=`<nav><button data-a="tab" data-t="score" class="${tab==='score'?'on':''}">Scoreboard</button><button data-a="tab" data-t="draft" class="${tab==='draft'?'on':''}">Draft</button></nav>`;
+  h+=tab==='score'?scoreView():draftView();
+  app.innerHTML=h;
+}
+
+function setup(){
+  app.innerHTML=`<div class="card stack"><h2 style="margin:0;font:800 1.5rem var(--head)">Set up the league</h2>
+  <p class="muted" style="margin:0">Enter one name per line in draft order (pick 1 first). Each person drafts ${ROUNDS} teams in a snake draft, so the order reverses every round.</p>
+  <textarea id="names" placeholder="Matthew&#10;Sam&#10;Jordan"></textarea>
+  <button data-a="shuf">Shuffle the order</button>
+  <button class="go" data-a="create">Create league</button></div>`;
+}
+
+function scoreView(){
+  const r=[...L.players].sort((a,b)=>total(b)-total(a)||L.players.indexOf(a)-L.players.indexOf(b));
+  let prev=null,rk=0,h='';
+  r.forEach((p,i)=>{const t=total(p);if(t!==prev){rk=i+1;prev=t}
+    h+=`<div class="card row ${rk===1&&t>0?'first':''}"><div class="rank">${rk}</div><div class="mid"><div class="nm">${esc(p)}</div><div class="chips">${mine(p).map(x=>`<span class="chip">${esc(x)} <b>${win(x)}</b></span>`).join('')||'<span class="chip">No picks yet</span>'}</div></div><div class="pts">${t}<small>wins</small></div></div>`});
+  h+=`<p class="muted">${L.updated?'Last updated '+esc(L.updated):''}</p>`;
+  if(unlocked()){
+    h+=`<button data-a="ew">${editWins?'Done editing wins':'Edit team wins'}</button>`;
+    if(editWins) h+=`<div class="card" style="margin-top:10px">${L.picks.map(t=>`<div class="wr"><span>${esc(t)}</span><div class="ctl"><button data-a="w" data-t="${esc(t)}" data-d="-1">−</button><span>${win(t)}</span><button data-a="w" data-t="${esc(t)}" data-d="1">+</button></div></div>`).join('')||'<span class="muted">Draft some teams first.</span>'}</div>`;
+  }
+  return h;
+}
+
+function draftView(){
+  const n=L.picks.length,done=n>=totalPicks(),u=unlocked();
+  let h='';
+  if(u) h+=`<div class="card"><label class="muted">I’m playing as (pick your name to draft on your turn)</label><br><select id="me"><option value="">Just watching</option><option value="*" ${me==='*'?'selected':''}>Commissioner (pick for anyone)</option>${L.players.map(p=>`<option ${me===p?'selected':''}>${esc(p)}</option>`).join('')}</select></div>`;
+  if(done) h+=`<div class="card clock"><div class="nm">Draft complete</div><div class="muted">All ${totalPicks()} picks are in.</div></div>`;
+  else{
+    const o=owner(n),can=u&&(me==='*'||me===o);
+    h+=`<div class="card clock"><div class="muted">Pick ${n+1} of ${totalPicks()} · Round ${Math.floor(n/L.players.length)+1}</div><div class="nm">${esc(o)} is on the clock</div>${can?'<div style="color:var(--ok);font-weight:700">Your turn — choose a team below.</div>':''}</div>`;
+    h+=`<div class="card"><b>Available teams</b><div class="grid">${TEAMS.filter(t=>!L.picks.includes(t)).map(t=>`<button data-a="pick" data-t="${esc(t)}" ${can?'':'disabled'}>${esc(t)}</button>`).join('')}</div></div>`;
+  }
+  h+=`<div class="card"><b>Draft board</b>${L.players.map(p=>`<div class="wr"><span><b>${esc(p)}</b></span><span class="muted" style="text-align:right">${esc(mine(p).join(', '))||'—'}</span></div>`).join('')}</div>`;
+  if(u&&n>0) h+=`<button data-a="undo">Undo last pick</button> <button data-a="reset">Reset draft</button>`;
+  return h;
+}
+
+async function pick(team){
+  try{await runTransaction(db,async tx=>{
+    const d=(await tx.get(ref)).data();
+    if(d.picks.length!==L.picks.length||d.picks.includes(team)||d.picks.length>=ROUNDS*d.players.length) throw new Error('The board changed. Check the latest pick and try again.');
+    tx.update(ref,{picks:[...d.picks,team],updated:now()});
+  })}catch(e){toast(e.message)}
+}
+
+app.addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const a=b.dataset.a;
+  if(a==='tab'){tab=b.dataset.t;render()}
+  else if(a==='ew'){editWins=!editWins;render()}
+  else if(a==='shuf'){const t=$('#names'),x=t.value.split('\n').map(s=>s.trim()).filter(Boolean);for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[x[i],x[j]]=[x[j],x[i]]}t.value=x.join('\n')}
+  else if(a==='create'){
+    const players=$('#names').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(players.length<2||new Set(players).size<players.length) return toast('Enter at least 2 different names, one per line.');
+    if(players.length*ROUNDS>TEAMS.length) return toast('Too many players: '+ROUNDS+' teams each needs at most '+Math.floor(TEAMS.length/ROUNDS)+' players.');
+    try{await setDoc(ref,{players,picks:[],wins:{},updated:now()})}catch(err){toast('Couldn’t create: '+err.message)}
+  }
+  else if(a==='pick'){pick(b.dataset.t)}
+  else if(a==='w'){const t=b.dataset.t,v=Math.max(0,win(t)+Number(b.dataset.d));try{await updateDoc(ref,{wins:{...L.wins,[t]:v},updated:now()})}catch(err){toast(err.message)}}
+  else if(a==='undo'){if(confirm('Remove the last pick?'))try{await updateDoc(ref,{picks:L.picks.slice(0,-1),updated:now()})}catch(err){toast(err.message)}}
+  else if(a==='reset'){if(confirm('Clear ALL picks and wins? This cannot be undone.'))try{await updateDoc(ref,{picks:[],wins:{},updated:now()})}catch(err){toast(err.message)}}
+});
+app.addEventListener('change',e=>{if(e.target.id==='me'){me=e.target.value;localStorage.setItem('me',me);render()}});
+</script>
+</body>
+</html>
